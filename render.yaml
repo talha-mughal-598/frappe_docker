@@ -1,22 +1,15 @@
 services:
   - name: backend
     type: web
-    image: frappe/erpnext:v15.50.0
+    image: "frappe/erpnext:v15.50.0"
     env:
-      DB_HOST: db
+      DB_HOST: "db"
       DB_PORT: "3306"
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
-    healthCheck:
-      command: ["mysqladmin", "ping", "-h", "localhost", "--password=admin"]
-      intervalSeconds: 10
-      retries: 5
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: on-failure
+      MYSQL_ROOT_PASSWORD: "admin"
+      MARIADB_ROOT_PASSWORD: "admin"
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
 
   - name: configurator
     type: worker
