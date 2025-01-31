@@ -1,7 +1,8 @@
 services:
   - name: backend
     type: web
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     envVars:
       - key: DB_HOST
         value: db
