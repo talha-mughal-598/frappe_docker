@@ -79,7 +79,7 @@ services:
     restartPolicy: none
 
   - name: db
-    type: db
+    type: worker
     image: mariadb:10.6
     env:
       MYSQL_ROOT_PASSWORD: admin
@@ -152,7 +152,7 @@ services:
     restartPolicy: on-failure
 
   - name: redis-queue
-    type: db
+    type: worker
     image: redis:6.2-alpine
     volumes:
       - name: redis-queue-data
@@ -160,7 +160,7 @@ services:
     restartPolicy: on-failure
 
   - name: redis-cache
-    type: db
+    type: worker
     image: redis:6.2-alpine
     restartPolicy: on-failure
 
