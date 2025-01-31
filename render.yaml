@@ -1,12 +1,16 @@
 services:
   - name: backend
     type: web
-    image: "frappe/erpnext:v15.50.0"
-    env:
-      DB_HOST: "db"
-      DB_PORT: "3306"
-      MYSQL_ROOT_PASSWORD: "admin"
-      MARIADB_ROOT_PASSWORD: "admin"
+    image: frappe/erpnext:v15.50.0
+    envVars:
+      - key: DB_HOST
+        value: db
+      - key: DB_PORT
+        value: "3306"
+      - key: MYSQL_ROOT_PASSWORD
+        value: admin
+      - key: MARIADB_ROOT_PASSWORD
+        value: admin
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
