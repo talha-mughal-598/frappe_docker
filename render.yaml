@@ -7,7 +7,7 @@ services:
     name: configurator
     autoDeploy: false
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     # Run all configuration commands in one bash shell.
     startCommand: >
       bash -c "ls -1 apps > sites/apps.txt;
@@ -29,7 +29,6 @@ services:
       - key: SOCKETIO_PORT
         value: "9000"
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
@@ -37,7 +36,7 @@ services:
   - type: web
     name: frontend
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     startCommand: "nginx-entrypoint.sh"
     envVars:
       - key: BACKEND
@@ -57,7 +56,6 @@ services:
       - key: CLIENT_MAX_BODY_SIZE
         value: "${CLIENT_MAX_BODY_SIZE:-50m}"
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
@@ -65,24 +63,20 @@ services:
   # (By marking it “private” the service is not exposed to the public internet.)
   - type: web
     name: backend
-    private: true
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     # (No startCommand here means the image’s default command is used.)
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
   # Websocket – internal service running the socket.io process.
   - type: web
     name: websocket
-    private: true
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     startCommand: "node /home/frappe/frappe-bench/apps/frappe/socketio.js"
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
@@ -90,10 +84,9 @@ services:
   - type: worker
     name: queue-short
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     startCommand: "bench worker --queue short,default"
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
@@ -101,10 +94,9 @@ services:
   - type: worker
     name: queue-long
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     startCommand: "bench worker --queue long,default,short"
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
@@ -112,8 +104,7 @@ services:
   - type: worker
     name: scheduler
     env: docker
-    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    image: frappe/erpnext:v15.50.0
     startCommand: "bench schedule"
     disk:
-      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
