@@ -35,7 +35,7 @@ services:
         value: "websocket:9000"
       - key: FRAPPE_SITE_NAME_HEADER
         # Note: The '$' in $host is escaped here.
-        value: "${FRAPPE_SITE_NAME_HEADER:-\$host}"
+        value: '${FRAPPE_SITE_NAME_HEADER:-\$host}'
       - key: UPSTREAM_REAL_IP_ADDRESS
         value: "${UPSTREAM_REAL_IP_ADDRESS:-127.0.0.1}"
       - key: UPSTREAM_REAL_IP_HEADER
