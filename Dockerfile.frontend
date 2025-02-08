@@ -1,0 +1,5 @@
+# Dockerfile.frontend
+FROM frappe/erpnext:v15.50.0
+WORKDIR /home/frappe/frappe-bench
+# The CMD runs the nginx entrypoint script.
+CMD ["nginx-entrypoint.sh"]

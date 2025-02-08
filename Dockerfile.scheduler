@@ -1,0 +1,4 @@
+# Dockerfile.scheduler
+FROM frappe/erpnext:v15.50.0
+WORKDIR /home/frappe/frappe-bench
+CMD ["bench", "schedule"]

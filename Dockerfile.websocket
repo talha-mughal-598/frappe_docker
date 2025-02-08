@@ -1,0 +1,4 @@
+# Dockerfile.websocket
+FROM frappe/erpnext:v15.50.0
+WORKDIR /home/frappe/frappe-bench
+CMD ["node", "/home/frappe/frappe-bench/apps/frappe/socketio.js"]

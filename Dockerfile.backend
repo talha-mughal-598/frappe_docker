@@ -1,0 +1,5 @@
+# Dockerfile.backend
+FROM frappe/erpnext:v15.50.0
+WORKDIR /home/frappe/frappe-bench
+# Use the default command from the base image or specify one.
+CMD ["bench", "start"]

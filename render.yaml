@@ -1,20 +1,12 @@
 services:
   # ---------------------------------------------------------------------------
-  # Configurator – a one‑time configuration job.
+  # Configurator – one-time configuration job.
+  # This worker service is set to autoDeploy: false so you can run it manually.
   - type: worker
     name: configurator
     autoDeploy: false
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    startCommand: >
-      bash -c "ls -1 apps > sites/apps.txt;
-      bench set-config -g db_host $DB_HOST;
-      bench set-config -gp db_port $DB_PORT;
-      bench set-config -g redis_cache 'redis://$REDIS_CACHE';
-      bench set-config -g redis_queue 'redis://$REDIS_QUEUE';
-      bench set-config -g redis_socketio 'redis://$REDIS_QUEUE';
-      bench set-config -gp socketio_port $SOCKETIO_PORT"
+    dockerfilePath: Dockerfile.configurator
     envVars:
       - key: DB_HOST
         value: ${DB_HOST}
@@ -35,16 +27,15 @@ services:
   - type: web
     name: frontend
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    startCommand: "nginx-entrypoint.sh"
+    dockerfilePath: Dockerfile.frontend
     envVars:
       - key: BACKEND
         value: "backend:8000"
       - key: SOCKETIO
         value: "websocket:9000"
       - key: FRAPPE_SITE_NAME_HEADER
-        value: "${FRAPPE_SITE_NAME_HEADER:-$host}"
+        # Note: The '$' in $host is escaped here.
+        value: "${FRAPPE_SITE_NAME_HEADER:-\$host}"
       - key: UPSTREAM_REAL_IP_ADDRESS
         value: "${UPSTREAM_REAL_IP_ADDRESS:-127.0.0.1}"
       - key: UPSTREAM_REAL_IP_HEADER
@@ -64,9 +55,7 @@ services:
   - type: web
     name: backend
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    # No startCommand override – use the Dockerfile’s default command.
+    dockerfilePath: Dockerfile.backend
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
@@ -76,33 +65,27 @@ services:
   - type: web
     name: websocket
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    startCommand: "node /home/frappe/frappe-bench/apps/frappe/socketio.js"
+    dockerfilePath: Dockerfile.websocket
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
-  # Queue worker (short) – background worker for short/fast queues.
+  # Queue Worker (short) – background worker for short/fast queues.
   - type: worker
     name: queue-short
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    startCommand: "bench worker --queue short,default"
+    dockerfilePath: Dockerfile.queue_short
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
 
   # ---------------------------------------------------------------------------
-  # Queue worker (long) – background worker for long queues.
+  # Queue Worker (long) – background worker for long queues.
   - type: worker
     name: queue-long
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    startCommand: "bench worker --queue long,default,short"
+    dockerfilePath: Dockerfile.queue_long
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
@@ -112,9 +95,7 @@ services:
   - type: worker
     name: scheduler
     env: docker
-    build:
-      dockerfilePath: Dockerfile
-    startCommand: "bench schedule"
+    dockerfilePath: Dockerfile.scheduler
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
