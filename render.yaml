@@ -7,7 +7,8 @@ services:
     name: configurator
     autoDeploy: false
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     # Run all configuration commands in one bash shell.
     startCommand: >
       bash -c "ls -1 apps > sites/apps.txt;
@@ -36,7 +37,8 @@ services:
   - type: web
     name: frontend
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     startCommand: "nginx-entrypoint.sh"
     envVars:
       - key: BACKEND
@@ -64,7 +66,8 @@ services:
   - type: web
     name: backend
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     # (No startCommand here means the image’s default command is used.)
     disk:
       mountPath: /home/frappe/frappe-bench/sites
@@ -74,7 +77,8 @@ services:
   - type: web
     name: websocket
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     startCommand: "node /home/frappe/frappe-bench/apps/frappe/socketio.js"
     disk:
       mountPath: /home/frappe/frappe-bench/sites
@@ -84,7 +88,8 @@ services:
   - type: worker
     name: queue-short
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     startCommand: "bench worker --queue short,default"
     disk:
       mountPath: /home/frappe/frappe-bench/sites
@@ -94,7 +99,8 @@ services:
   - type: worker
     name: queue-long
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     startCommand: "bench worker --queue long,default,short"
     disk:
       mountPath: /home/frappe/frappe-bench/sites
@@ -104,7 +110,8 @@ services:
   - type: worker
     name: scheduler
     env: docker
-    image: frappe/erpnext:v15.50.0
+    image:
+      url: frappe/erpnext:v15.50.0
     startCommand: "bench schedule"
     disk:
       mountPath: /home/frappe/frappe-bench/sites
