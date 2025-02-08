@@ -1,195 +1,141 @@
+# render.yaml
+# This blueprint deploys ERPNext using Render’s multi–service format.
+# The image reference uses the CUSTOM_IMAGE/CUSTOM_TAG variables, with fallbacks.
+# A persistent disk named “sites” is attached to any container that needs access
+# to /home/frappe/frappe-bench/sites.
+
 services:
-  - name: backend
-    type: web
-    image:
-      url: frappe/erpnext:v15.50.0
+  # ---------------------------------------------------------------------------
+  # FRONTEND: Public web service that proxies to the backend and websocket.
+  - type: web
+    name: frontend
+    env: docker
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    # The container’s startup command uses the image’s nginx entrypoint.
+    startCommand: "nginx-entrypoint.sh"
+    envVars:
+      - key: BACKEND
+        # The backend service is internal and listens on port 8000.
+        value: "backend:8000"
+      - key: SOCKETIO
+        # The websocket service is internal and listens on port 9000.
+        value: "websocket:9000"
+      - key: FRAPPE_SITE_NAME_HEADER
+        # If not provided via Render’s environment settings, this defaults to the literal "$host"
+        value: "$host"
+      - key: UPSTREAM_REAL_IP_ADDRESS
+        value: "127.0.0.1"
+      - key: UPSTREAM_REAL_IP_HEADER
+        value: "X-Forwarded-For"
+      - key: UPSTREAM_REAL_IP_RECURSIVE
+        value: "off"
+      - key: PROXY_READ_TIMEOUT
+        value: "120"
+      - key: CLIENT_MAX_BODY_SIZE
+        value: "50m"
+    # Mount the persistent disk so that sites data is shared with other services.
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
+    # Ensure that the internal backend and websocket services are healthy first.
+    dependsOn:
+      - backend
+      - websocket
+
+  # ---------------------------------------------------------------------------
+  # BACKEND: Internal web service that runs the ERPNext backend.
+  - type: web
+    name: backend
+    env: docker
+    internal: true
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
+    # Wait for the configurator job to finish before starting.
+    dependsOn:
+      - configurator
+
+  # ---------------------------------------------------------------------------
+  # WEBSOCKET: Internal service that runs the Socket.IO process.
+  - type: web
+    name: websocket
+    env: docker
+    internal: true
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    startCommand: "node /home/frappe/frappe-bench/apps/frappe/socketio.js"
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
+    dependsOn:
+      - configurator
+
+  # ---------------------------------------------------------------------------
+  # WORKER SERVICES: These run continuous background processes.
+  - type: worker
+    name: queue-short
+    env: docker
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    startCommand: "bench worker --queue short,default"
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
+    dependsOn:
+      - configurator
+
+  - type: worker
+    name: queue-long
+    env: docker
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    startCommand: "bench worker --queue long,default,short"
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
+    dependsOn:
+      - configurator
+
+  - type: worker
+    name: scheduler
+    env: docker
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    startCommand: "bench schedule"
+    disk:
+      name: sites
+      mountPath: /home/frappe/frappe-bench/sites
+    dependsOn:
+      - configurator
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # CONFIGURATOR: A one–time job that runs initial configuration commands.
+  - name: configurator
+    env: docker
+    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
+    # Use a bash shell to run multiple commands sequentially.
+    startCommand: >
+      bash -c "ls -1 apps > sites/apps.txt;
+      bench set-config -g db_host $DB_HOST;
+      bench set-config -gp db_port $DB_PORT;
+      bench set-config -g redis_cache 'redis://$REDIS_CACHE';
+      bench set-config -g redis_queue 'redis://$REDIS_QUEUE';
+      bench set-config -g redis_socketio 'redis://$REDIS_QUEUE';
+      bench set-config -gp socketio_port $SOCKETIO_PORT"
     envVars:
       - key: DB_HOST
-        value: db
+        value: ${DB_HOST}
       - key: DB_PORT
-        value: "3306"
-      - key: MYSQL_ROOT_PASSWORD
-        value: admin
-      - key: MARIADB_ROOT_PASSWORD
-        value: admin
+        value: ${DB_PORT}
+      - key: REDIS_CACHE
+        value: ${REDIS_CACHE}
+      - key: REDIS_QUEUE
+        value: ${REDIS_QUEUE}
+      - key: SOCKETIO_PORT
+        value: "9000"
     disk:
       name: sites
       mountPath: /home/frappe/frappe-bench/sites
 
-  - name: configurator
-    type: worker
-    image: frappe/erpnext:v15.50.0
-    env:
-      DB_HOST: db
-      DB_PORT: "3306"
-      REDIS_CACHE: redis-cache:6379
-      REDIS_QUEUE: redis-queue:6379
-      SOCKETIO_PORT: "9000"
-    entryPoint:
-      - bash
-      - -c
-    command:
-      - >
-        ls -1 apps > sites/apps.txt;
-        bench set-config -g db_host $$DB_HOST;
-        bench set-config -gp db_port $$DB_PORT;
-        bench set-config -g redis_cache "redis://$$REDIS_CACHE";
-        bench set-config -g redis_queue "redis://$$REDIS_QUEUE";
-        bench set-config -g redis_socketio "redis://$$REDIS_QUEUE";
-        bench set-config -gp socketio_port $$SOCKETIO_PORT;
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: none
-
-  - name: create-site
-    type: worker
-    image: frappe/erpnext:v15.50.0
-    entryPoint:
-      - bash
-      - -c
-    command:
-      - >
-        wait-for-it -t 120 db:3306;
-        wait-for-it -t 120 redis-cache:6379;
-        wait-for-it -t 120 redis-queue:6379;
-        export start=`date +%s`;
-        until [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".db_host // empty"` ]] && \
-          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_cache // empty"` ]] && \
-          [[ -n `grep -hs ^ sites/common_site_config.json | jq -r ".redis_queue // empty"` ]];
-        do
-          echo "Waiting for sites/common_site_config.json to be created";
-          sleep 5;
-          if (( `date +%s`-start > 120 )); then
-            echo "could not find sites/common_site_config.json with required keys";
-            exit 1
-          fi
-        done;
-        echo "sites/common_site_config.json found";
-        bench new-site --mariadb-user-host-login-scope='%' --admin-password=admin --db-root-username=root --db-root-password=admin --install-app erpnext --set-default frontend;
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: none
-
-  - name: db
-    type: worker
-    image: mariadb:10.6
-    env:
-      MYSQL_ROOT_PASSWORD: admin
-      MARIADB_ROOT_PASSWORD: admin
-    command:
-      - --character-set-server=utf8mb4
-      - --collation-server=utf8mb4_unicode_ci
-      - --skip-character-set-client-handshake
-      - --skip-innodb-read-only-compressed # Temporary fix for MariaDB 10.6
-    volumes:
-      - name: db-data
-        mountPath: /var/lib/mysql
-    healthCheck:
-      command: ["mysqladmin", "ping", "-h", "localhost", "--password=admin"]
-      intervalSeconds: 1
-      retries: 20
-    restartPolicy: on-failure
-
-  - name: frontend
-    type: web
-    image: frappe/erpnext:v15.50.0
-    env:
-      BACKEND: backend:8000
-      FRAPPE_SITE_NAME_HEADER: frontend
-      SOCKETIO: websocket:9000
-      UPSTREAM_REAL_IP_ADDRESS: 127.0.0.1
-      UPSTREAM_REAL_IP_HEADER: X-Forwarded-For
-      UPSTREAM_REAL_IP_RECURSIVE: "off"
-      PROXY_READ_TIMEOUT: 120
-      CLIENT_MAX_BODY_SIZE: 50m
-    command:
-      - nginx-entrypoint.sh
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    ports:
-      - "8080:8080"
-    restartPolicy: on-failure
-
-  - name: queue-long
-    type: worker
-    image: frappe/erpnext:v15.50.0
-    command:
-      - bench
-      - worker
-      - --queue
-      - long,default,short
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: on-failure
-
-  - name: queue-short
-    type: worker
-    image: frappe/erpnext:v15.50.0
-    command:
-      - bench
-      - worker
-      - --queue
-      - short,default
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: on-failure
-
-  - name: redis-queue
-    type: worker
-    image: redis:6.2-alpine
-    volumes:
-      - name: redis-queue-data
-        mountPath: /data
-    restartPolicy: on-failure
-
-  - name: redis-cache
-    type: worker
-    image: redis:6.2-alpine
-    restartPolicy: on-failure
-
-  - name: scheduler
-    type: worker
-    image: frappe/erpnext:v15.50.0
-    command:
-      - bench
-      - schedule
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: on-failure
-
-  - name: websocket
-    type: worker
-    image: frappe/erpnext:v15.50.0
-    command:
-      - node
-      - /home/frappe/frappe-bench/apps/frappe/socketio.js
-    volumes:
-      - name: sites
-        mountPath: /home/frappe/frappe-bench/sites
-      - name: logs
-        mountPath: /home/frappe/frappe-bench/logs
-    restartPolicy: on-failure
-
-volumes:
-  - name: db-data
-  - name: redis-queue-data
+disks:
+  # Define a persistent disk for sharing the sites folder among services.
   - name: sites
-  - name: logs
+    sizeInGb: 1
