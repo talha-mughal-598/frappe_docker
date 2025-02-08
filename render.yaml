@@ -1,117 +1,14 @@
-# render.yaml
-# This blueprint deploys ERPNext using Render’s multi–service format.
-# The image reference uses the CUSTOM_IMAGE/CUSTOM_TAG variables, with fallbacks.
-# A persistent disk named “sites” is attached to any container that needs access
-# to /home/frappe/frappe-bench/sites.
-
 services:
   # ---------------------------------------------------------------------------
-  # FRONTEND: Public web service that proxies to the backend and websocket.
-  - type: web
-    name: frontend
-    env: docker
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    # The container’s startup command uses the image’s nginx entrypoint.
-    startCommand: "nginx-entrypoint.sh"
-    envVars:
-      - key: BACKEND
-        # The backend service is internal and listens on port 8000.
-        value: "backend:8000"
-      - key: SOCKETIO
-        # The websocket service is internal and listens on port 9000.
-        value: "websocket:9000"
-      - key: FRAPPE_SITE_NAME_HEADER
-        # If not provided via Render’s environment settings, this defaults to the literal "$host"
-        value: "$host"
-      - key: UPSTREAM_REAL_IP_ADDRESS
-        value: "127.0.0.1"
-      - key: UPSTREAM_REAL_IP_HEADER
-        value: "X-Forwarded-For"
-      - key: UPSTREAM_REAL_IP_RECURSIVE
-        value: "off"
-      - key: PROXY_READ_TIMEOUT
-        value: "120"
-      - key: CLIENT_MAX_BODY_SIZE
-        value: "50m"
-    # Mount the persistent disk so that sites data is shared with other services.
-    disk:
-      name: sites
-      mountPath: /home/frappe/frappe-bench/sites
-    # Ensure that the internal backend and websocket services are healthy first.
-    dependsOn:
-      - backend
-      - websocket
-
-  # ---------------------------------------------------------------------------
-  # BACKEND: Internal web service that runs the ERPNext backend.
-  - type: web
-    name: backend
-    env: docker
-    internal: true
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    disk:
-      name: sites
-      mountPath: /home/frappe/frappe-bench/sites
-    # Wait for the configurator job to finish before starting.
-    dependsOn:
-      - configurator
-
-  # ---------------------------------------------------------------------------
-  # WEBSOCKET: Internal service that runs the Socket.IO process.
-  - type: web
-    name: websocket
-    env: docker
-    internal: true
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    startCommand: "node /home/frappe/frappe-bench/apps/frappe/socketio.js"
-    disk:
-      name: sites
-      mountPath: /home/frappe/frappe-bench/sites
-    dependsOn:
-      - configurator
-
-  # ---------------------------------------------------------------------------
-  # WORKER SERVICES: These run continuous background processes.
+  # Configurator – one–time configuration job.
+  # (Set autoDeploy to false so it does not run automatically; trigger it manually
+  #  once you’ve deployed the other services.)
   - type: worker
-    name: queue-short
+    name: configurator
+    autoDeploy: false
     env: docker
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    startCommand: "bench worker --queue short,default"
-    disk:
-      name: sites
-      mountPath: /home/frappe/frappe-bench/sites
-    dependsOn:
-      - configurator
-
-  - type: worker
-    name: queue-long
-    env: docker
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    startCommand: "bench worker --queue long,default,short"
-    disk:
-      name: sites
-      mountPath: /home/frappe/frappe-bench/sites
-    dependsOn:
-      - configurator
-
-  - type: worker
-    name: scheduler
-    env: docker
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    startCommand: "bench schedule"
-    disk:
-      name: sites
-      mountPath: /home/frappe/frappe-bench/sites
-    dependsOn:
-      - configurator
-
-jobs:
-  # ---------------------------------------------------------------------------
-  # CONFIGURATOR: A one–time job that runs initial configuration commands.
-  - name: configurator
-    env: docker
-    dockerImage: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-$ERPNEXT_VERSION}
-    # Use a bash shell to run multiple commands sequentially.
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    # Run all configuration commands in one bash shell.
     startCommand: >
       bash -c "ls -1 apps > sites/apps.txt;
       bench set-config -g db_host $DB_HOST;
@@ -132,10 +29,91 @@ jobs:
       - key: SOCKETIO_PORT
         value: "9000"
     disk:
-      name: sites
+      sizeInGb: 1
       mountPath: /home/frappe/frappe-bench/sites
 
-disks:
-  # Define a persistent disk for sharing the sites folder among services.
-  - name: sites
-    sizeInGb: 1
+  # ---------------------------------------------------------------------------
+  # Frontend – public web service (runs nginx).
+  - type: web
+    name: frontend
+    env: docker
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    startCommand: "nginx-entrypoint.sh"
+    envVars:
+      - key: BACKEND
+        value: "backend:8000"
+      - key: SOCKETIO
+        value: "websocket:9000"
+      - key: FRAPPE_SITE_NAME_HEADER
+        value: "${FRAPPE_SITE_NAME_HEADER:-$host}"
+      - key: UPSTREAM_REAL_IP_ADDRESS
+        value: "${UPSTREAM_REAL_IP_ADDRESS:-127.0.0.1}"
+      - key: UPSTREAM_REAL_IP_HEADER
+        value: "${UPSTREAM_REAL_IP_HEADER:-X-Forwarded-For}"
+      - key: UPSTREAM_REAL_IP_RECURSIVE
+        value: "${UPSTREAM_REAL_IP_RECURSIVE:-off}"
+      - key: PROXY_READ_TIMEOUT
+        value: "${PROXY_READ_TIMEOUT:-120}"
+      - key: CLIENT_MAX_BODY_SIZE
+        value: "${CLIENT_MAX_BODY_SIZE:-50m}"
+    disk:
+      sizeInGb: 1
+      mountPath: /home/frappe/frappe-bench/sites
+
+  # ---------------------------------------------------------------------------
+  # Backend – internal web service.
+  # (By marking it “private” the service is not exposed to the public internet.)
+  - type: web
+    name: backend
+    private: true
+    env: docker
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    # (No startCommand here means the image’s default command is used.)
+    disk:
+      sizeInGb: 1
+      mountPath: /home/frappe/frappe-bench/sites
+
+  # ---------------------------------------------------------------------------
+  # Websocket – internal service running the socket.io process.
+  - type: web
+    name: websocket
+    private: true
+    env: docker
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    startCommand: "node /home/frappe/frappe-bench/apps/frappe/socketio.js"
+    disk:
+      sizeInGb: 1
+      mountPath: /home/frappe/frappe-bench/sites
+
+  # ---------------------------------------------------------------------------
+  # Queue worker (short) – background worker for short/fast queues.
+  - type: worker
+    name: queue-short
+    env: docker
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    startCommand: "bench worker --queue short,default"
+    disk:
+      sizeInGb: 1
+      mountPath: /home/frappe/frappe-bench/sites
+
+  # ---------------------------------------------------------------------------
+  # Queue worker (long) – background worker for long queues.
+  - type: worker
+    name: queue-long
+    env: docker
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    startCommand: "bench worker --queue long,default,short"
+    disk:
+      sizeInGb: 1
+      mountPath: /home/frappe/frappe-bench/sites
+
+  # ---------------------------------------------------------------------------
+  # Scheduler – background service to run scheduled tasks.
+  - type: worker
+    name: scheduler
+    env: docker
+    image: ${CUSTOM_IMAGE:-frappe/erpnext}:${CUSTOM_TAG:-${ERPNEXT_VERSION}}
+    startCommand: "bench schedule"
+    disk:
+      sizeInGb: 1
+      mountPath: /home/frappe/frappe-bench/sites
